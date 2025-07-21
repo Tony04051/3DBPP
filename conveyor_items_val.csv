@@ -1,0 +1,3 @@
+id,base_dimensions,weight,position,allowed_rotations,rotation_type,is_fragile,calc_dimensions
+1,"(27, 37, 50)",15,,"[0, 1, 2, 3, 4, 5]",0,False,"(30, 40, 53)"
+2,"(37, 65, 50)",20,,"[0, 1, 2, 3, 4, 5]",0,False,"(40, 68, 53)"
