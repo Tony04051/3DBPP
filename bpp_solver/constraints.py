@@ -16,17 +16,44 @@ def is_placement_valid(
     """
     rotated_dims = item.get_rotated_dimensions(rotation_type)
 
+    if not check_boundary_constraint(cage, position, rotated_dims):
+        print(f"放置物品 {item.id} 失敗: 超出籠車邊界。")
+        return False
+    
     if not check_weight_constraint(cage, item):
+        print(f"放置物品 {item.id} 失敗: 超過籠車重量限制。")
         return False
         
     if not check_stability_constraint(cage, item, position, rotated_dims):
+        print(f"放置物品 {item.id} 失敗: 支撐面積不足以確保穩定性。")
         return False
         
     # *** 修改點 1: 將 rotation_type 傳遞下去 ***
     if not check_center_of_gravity_constraint(cage, item, position, rotation_type):
+        print(f"放置物品 {item.id} 失敗: 籠車重心不穩定。")
         return False
     
     return True
+
+def check_boundary_constraint(
+    cage: CageTrolley, 
+    pos: tuple[float, float, float], 
+    dims: tuple[float, float, float]
+) -> bool:
+    """檢查物品是否超出籠車的邊界"""
+    px, py, pz = pos
+    dl, dw, dh = dims
+    cl, cw, ch = cage.dimensions
+    
+    # 加上一個很小的容忍值避免浮點數精度問題
+    TOLERANCE = 1e-6
+
+    return (px >= -TOLERANCE and
+            py >= -TOLERANCE and
+            pz >= -TOLERANCE and
+            px + dl <= cl + TOLERANCE and
+            py + dw <= cw + TOLERANCE and
+            pz + dh <= ch + TOLERANCE)
 
 def check_weight_constraint(cage: CageTrolley, item: Item) -> bool:
     """檢查是否超重"""

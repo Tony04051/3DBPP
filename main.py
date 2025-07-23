@@ -44,7 +44,7 @@ def run_packing_simulation(args):
                     )
                 conveyor_items.append(item)
     except FileNotFoundError:
-        print("錯誤: 找不到 'conveyor_items.csv' 檔案。請確認檔案是否存在。")
+        print("錯誤:請確認檔案是否存在。")
         return # 找不到檔案就直接結束程式
     except Exception as e:
         print(f"讀取 CSV 時發生錯誤: {e}")

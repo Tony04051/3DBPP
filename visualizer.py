@@ -18,6 +18,7 @@ def plot_cage_plotly(cage: CageTrolley, title="3D Bin Packing Result (Plotly)"):
             y=[y, y+dw, y+dw, y, y, y+dw, y+dw, y],
             z=[z, z, z, z, z+dh, z+dh, z+dh, z+dh],
             # 頂點如何連接成面
+            # 解釋：每個面由4個頂點組成，這裡的 i, j, k 分別代表頂點索引
             i=[7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2],
             j=[3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3],
             k=[0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6],

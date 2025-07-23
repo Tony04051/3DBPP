@@ -68,16 +68,16 @@ class SurfaceManager:
         i_xmin, i_ymin, i_xmax , i_ymax = item_footprint
         
         # 根據物品佔據的矩形，產生四個可能的剩餘矩形區域
-        # 1. 下方區域 (Below)
+        # 1. 下方區域 
         if i_ymin > s_ymin:
             cut_rects.append((s_xmin, s_ymin, s_xmax, i_ymin))
-        # 2. 上方區域 (Above)
+        # 2. 上方區域
         if i_ymax < s_ymax:
             cut_rects.append((s_xmin, i_ymax, s_xmax, s_ymax))
-        # 3. 左方區域 (Left)
+        # 3. 左方區域 
         if i_xmin > s_xmin:
             cut_rects.append((s_xmin, i_ymin, i_xmin, i_ymax))
-        # 4. 右方區域 (Right)
+        # 4. 右方區域 
         if i_xmax < s_xmax:
             cut_rects.append((i_xmax, i_ymin, s_xmax, i_ymax))
             
