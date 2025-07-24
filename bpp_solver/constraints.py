@@ -15,25 +15,29 @@ def is_placement_valid(
     check_center_of_gravity_constraint: 籠車會不會倒
     """
     rotated_dims = item.get_rotated_dimensions(rotation_type)
-
+    counter = 0
     if not check_boundary_constraint(cage, position, rotated_dims):
         print(f"放置物品 {item.id} 失敗: 超出籠車邊界。")
-        return False
+        counter +=1
     
     if not check_weight_constraint(cage, item):
         print(f"放置物品 {item.id} 失敗: 超過籠車重量限制。")
-        return False
+        counter += 1
         
-    if not check_stability_constraint(cage, item, position, rotated_dims):
+    if not check_stackable_constraint(cage, item, position, rotated_dims):
         print(f"放置物品 {item.id} 失敗: 支撐面積不足以確保穩定性。")
-        return False
+        counter += 1
         
+    if check_collision_constraint(cage, position, rotated_dims):
+        print(f"放置物品 {item.id} 失敗: 與其他物品發生碰撞。")
+        counter += 1
     # *** 修改點 1: 將 rotation_type 傳遞下去 ***
     if not check_center_of_gravity_constraint(cage, item, position, rotation_type):
         print(f"放置物品 {item.id} 失敗: 籠車重心不穩定。")
-        return False
-    
-    return True
+        counter += 1
+    print(f"違反了 {counter} 條限制式")
+    return counter == 0
+
 
 def check_boundary_constraint(
     cage: CageTrolley, 
@@ -59,7 +63,7 @@ def check_weight_constraint(cage: CageTrolley, item: Item) -> bool:
     """檢查是否超重"""
     return cage.current_weight + item.weight <= cage.weight_limit
 
-def check_stability_constraint(
+def check_stackable_constraint(
     cage: CageTrolley, 
     item: Item,
     pos: tuple[float, float, float],
@@ -81,7 +85,68 @@ def check_stability_constraint(
             
     required_area = item_bottom_area * STABILITY_FACTOR
     
+    # 法二: 透過比較鄰近平面的z檢查是否碰撞
+    # """檢查物品體積是否會與其他物品重疊"""
+    # overlap = False
+    # for s1 in cage.support_surfaces:
+    #     higher_surface = []
+    #     if pos[0] +dims[0] > s1.rect[2] and pos[1] + dims[1] > surface.rect[3]: # xy平面重疊
+    #         # 找出鄰接平面
+    #         for s2 in cage.support_surfaces:
+    #             if s2.z > s1.z: # 篩選出較高的平面
+    #                 x_min1, y_min1, x_max1, y_max1 = s1.rect
+    #                 x_min2, y_min2, x_max2, y_max2 = s2.rect
+    #                 # 放上物品後，會不會與其他平面重疊
+    #                 if x_min1 + dims[0] > x_min2 or y_min1 + dims[1] > y_min2:
+    #                     # 如果有重疊，則記錄下這個平面
+    #                     higher_surface.append(s2)
+    #         if len(higher_surface) > 0:
+    #             overlap = True
+            
     return total_supported_area >= required_area - 1e-6
+    
+def check_collision_constraint(
+    cage: CageTrolley,
+    pos: tuple[float, float, float],
+    dims: tuple[float, float, float]
+) -> bool:
+    """
+    檢查新放置的物品是否會與籠車中的物品重疊
+    """
+    # 新物品的邊界框 (box1)
+    x1_min, y1_min, z1_min = pos
+    x1_max = x1_min + dims[0]
+    y1_max = y1_min + dims[1]
+    z1_max = z1_min + dims[2]
+
+    # 遍歷所有已經放置的物品
+    for packed_item in cage.packed_items:
+        packed_pos = packed_item.position
+        packed_dims = packed_item.get_rotated_dimensions(packed_item.rotation_type)
+        
+        # 已放置物品的邊界框 (box2)
+        if packed_pos is None:
+            continue
+        x2_min, y2_min, z2_min = packed_pos
+        x2_max = x2_min + packed_dims[0]
+        y2_max = y2_min + packed_dims[1]
+        z2_max = z2_min + packed_dims[2]
+
+        # 判斷 box1 和 box2 是否重疊
+        # 兩個盒子重疊，若且唯若它們在三個軸上的投影都重疊
+        # 為了避免浮點數精度問題，在比較時加入一個小的容差
+        TOLERANCE = 1e-6
+        
+        x_overlap = (x1_min < x2_max - TOLERANCE) and (x1_max > x2_min + TOLERANCE)
+        y_overlap = (y1_min < y2_max - TOLERANCE) and (y1_max > y2_min + TOLERANCE)
+        z_overlap = (z1_min < z2_max - TOLERANCE) and (z1_max > z2_min + TOLERANCE)
+
+        if x_overlap and y_overlap and z_overlap:
+            # 只要和任何一個已存在的物品碰撞，就立即返回 True (有碰撞)
+            return True
+
+    # 如果遍歷完所有已存在的物品都沒有碰撞，返回 False (無碰撞)
+    return False
 
 def check_center_of_gravity_constraint(
     cage: CageTrolley, 

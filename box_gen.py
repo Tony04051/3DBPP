@@ -17,9 +17,9 @@ for i in range(NUM_ITEMS):
     item = Item(
         id=item_id,
         base_dimensions=(length, width, height),
-        position=None,  # 初始位置為 None
         allowed_rotations=list(range(6)),  # 允許所有旋轉方向
-        weight=weight
+        weight=weight,
+        is_fragile=False  # 假設所有物品都不是易碎的
     )
     conveyor_items.append(item)
     print(conveyor_items)

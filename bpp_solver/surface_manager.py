@@ -1,7 +1,7 @@
 # bpp_solver/surface_manager.py
 
 from .data_structures import Item, SupportSurface
-from .geometry import Rect, is_rect_completely_contained
+from .geometry import Rect, get_intersection_area
 
 class SurfaceManager:
     def __init__(self, merge_surfaces: bool = True):
@@ -30,67 +30,124 @@ class SurfaceManager:
             placed_item.position[1] + item_dims[1],  # w (width)
         )
         
-        new_surfaces = []
-        
-        # --- 1. 切割與更新舊平面 ---
+        item_z = placed_item.position[2]
+
+        unaffected_surfaces = []
+        affected_surfaces = []
+
+        # 1. 將所有平面分為「受影響」和「未受影響」兩組
         for surface in all_surfaces:
-            # 檢查物品是否在這個平面上
-            if not (surface.z < placed_item.position[2] + 0.1 and \
-                    is_rect_completely_contained(item_footprint, surface.rect)):
-                # 如果物品不在這個平面上，或者平面在物品之上，則保留原平面
-                new_surfaces.append(surface)
-                continue
+            # 判斷條件：
+            # a) 高度必須與物品底部一致
+            # b) 在 XY 平面上必須與物品的足跡有交集
+            is_at_correct_z = surface.z - item_z ==0
+            intersection_area = get_intersection_area(surface.rect, item_footprint)
+            
+            if intersection_area > 0:
+                affected_surfaces.append(surface)
+            else:
+                unaffected_surfaces.append(surface)
 
-            # 如果物品在這個平面上，則對該平面進行切割
-            # 根據 item_footprint 將 surface.rect 切割成最多四個新的矩形
-            cut_surfaces = self._cut_surface(surface, item_footprint)
-            new_surfaces.extend(cut_surfaces)
+        # 2. 處理所有受影響的平面，計算它們被 "挖掉" 後的剩餘部分
+        remaining_surfaces = []
+        for surface in affected_surfaces:
+            # 對於每一個受影響的平面，都用 item_footprint 去切割它
+            # _cut_surface 函式會返回切割後剩餘的矩形列表
+            remaining_parts = self._cut_surface(surface, item_footprint)
+            remaining_surfaces.extend(remaining_parts)
 
-        # --- 2. 創建新平面 ---
-        # 在 placed_item 的頂部創建一個新的 SupportSurface
+        # 3. 在物品頂部創建一個新平面
         new_top_surface = SupportSurface(
-            z=placed_item.position[2] + item_dims[2], # h (height)
+            z=item_z + item_dims[2],
             rect=item_footprint,
             supporting_items=[str(placed_item.id)]
         )
-        new_surfaces.append(new_top_surface)
 
-        # --- 3. (可選) 合併相鄰平面 ---
+        # 4. 組合最終的平面列表
+        # (未受影響的 + 受影響的剩餘部分 + 新的頂部平面)
+        final_surfaces = unaffected_surfaces + remaining_surfaces + [new_top_surface]
+
+        # 5. (可選) 合併相鄰平面
         if self.merge_surfaces:
-            return self._merge_surfaces(new_surfaces)
+            return self._merge_surfaces(final_surfaces)
         else:
-            return new_surfaces
-
-    def _cut_surface(self, surface: SupportSurface, item_footprint: Rect) -> list[SupportSurface]:
-        """將一個平面根據物品佔據的區域切割成多個小平面"""
-        cut_rects = []
+            return final_surfaces
+    def _cut_surface(self, surface: SupportSurface, cutter_rect: Rect) -> list[SupportSurface]:
+        """
+        從一個平面(surface)中，挖掉一個矩形區域(cutter_rect)。
+        返回切割後剩餘的、有效的 SupportSurface 列表。
+        這是一個健壯的切割算法。
+        """
+        remaining_rects = []
         s_xmin, s_ymin, s_xmax, s_ymax = surface.rect
-        i_xmin, i_ymin, i_xmax , i_ymax = item_footprint
-        
-        # 根據物品佔據的矩形，產生四個可能的剩餘矩形區域
-        # 1. 下方區域 
-        if i_ymin > s_ymin:
-            cut_rects.append((s_xmin, s_ymin, s_xmax, i_ymin))
-        # 2. 上方區域
-        if i_ymax < s_ymax:
-            cut_rects.append((s_xmin, i_ymax, s_xmax, s_ymax))
-        # 3. 左方區域 
-        if i_xmin > s_xmin:
-            cut_rects.append((s_xmin, i_ymin, i_xmin, i_ymax))
-        # 4. 右方區域 
-        if i_xmax < s_xmax:
-            cut_rects.append((i_xmax, i_ymin, s_xmax, i_ymax))
-            
+        c_xmin, c_ymin, c_xmax, c_ymax = cutter_rect
+
+        # 計算實際的交集，因為切割器可能比平面大
+        inter_xmin = max(s_xmin, c_xmin)
+        inter_ymin = max(s_ymin, c_ymin)
+        inter_xmax = min(s_xmax, c_xmax)
+        inter_ymax = min(s_ymax, c_ymax)
+
+        # 根據交集矩形，產生四個可能的剩餘矩形區域
+        # 1. 下方區域 (Below)
+        if inter_ymin > s_ymin:
+            remaining_rects.append((s_xmin, s_ymin, s_xmax, inter_ymin))
+        # 2. 上方區域 (Above)
+        if inter_ymax < s_ymax:
+            remaining_rects.append((s_xmin, inter_ymax, s_xmax, s_ymax))
+        # 3. 左方區域 (Left)
+        if inter_xmin > s_xmin:
+            remaining_rects.append((s_xmin, inter_ymin, inter_xmin, inter_ymax))
+        # 4. 右方區域 (Right)
+        if inter_xmax < s_xmax:
+            remaining_rects.append((inter_xmax, inter_ymin, s_xmax, inter_ymax))
+
         # 將有效的矩形轉換為 SupportSurface 物件
         new_surfaces = []
-        for rect in cut_rects:
-            if rect[0] < rect[2] and rect[1] < rect[3]: # 確保是有效的矩形
+        for rect in remaining_rects:
+            if rect[0] < rect[2] and rect[1] < rect[3]:  # 確保是有效的矩形
                 new_surfaces.append(SupportSurface(
                     z=surface.z,
                     rect=rect,
                     supporting_items=surface.supporting_items
                 ))
         return new_surfaces
+    
+    # 箱子無法從旁放入
+    # def _cut_surface(self, surface: SupportSurface, cutter_rect: Rect) -> list[SupportSurface]:
+    #     """
+    #     從一個平面(surface)中，挖掉一個矩形區域(cutter_rect)。
+    #     返回切割後剩餘的、有效的 SupportSurface 列表。
+    #     這是一個健壯的切割算法。
+    #     """
+    #     remaining_rects = []
+    #     s_xmin, s_ymin, s_xmax, s_ymax = surface.rect
+    #     c_xmin, c_ymin, c_xmax, c_ymax = cutter_rect
+
+    #     # 計算交集
+    #     inter_xmin = max(s_xmin, c_xmin)
+    #     inter_ymin = max(s_ymin, c_ymin)
+    #     inter_xmax = min(s_xmax, c_xmax)
+    #     inter_ymax = min(s_ymax, c_ymax)
+
+    #     # 根據交集矩形，產生四個可能的剩餘矩形區域
+    #     # 1. 下方區域 (Below)
+    #     if inter_ymin > s_ymin:
+    #         remaining_rects.append((s_xmin, s_ymin, s_xmax, inter_ymin))
+    #     # 4. 右方區域 (Right)
+    #     if inter_xmax < s_xmax:
+    #         remaining_rects.append((inter_xmax, s_ymin, s_xmax, s_ymax))
+
+    #     # 將有效的矩形轉換為 SupportSurface 物件
+    #     new_surfaces = []
+    #     for rect in remaining_rects:
+    #         if rect[0] < rect[2] and rect[1] < rect[3]:  # 確保是有效的矩形
+    #             new_surfaces.append(SupportSurface(
+    #                 z=surface.z,
+    #                 rect=rect,
+    #                 supporting_items=surface.supporting_items
+    #             ))
+    #     return new_surfaces
 
     def _merge_surfaces(self, surfaces: list[SupportSurface]) -> list[SupportSurface]:
         """

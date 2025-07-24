@@ -1,5 +1,0 @@
-id,base_dimensions,weight,position,allowed_rotations,rotation_type,is_fragile,calc_dimensions
-1,"(77, 77, 25)",15,,"[0, 1, 2, 3, 4, 5]",0,False
-2,"(92, 92, 25)",15,,"[0, 1, 2, 3, 4, 5]",0,False
-
-

@@ -20,18 +20,18 @@ def get_intersection_area(rect1: Rect, rect2: Rect) -> float:
     inter_x_max = min(x_max1, x_max2)
     inter_y_max = min(y_max1, y_max2)
 
-    # 如果沒有交集，寬度或高度會是負數或零
+    # 如果沒有交集，寬度或長度會是負數或零
     if inter_x_min >= inter_x_max or inter_y_min >= inter_y_max:
         return 0.0
     
     return (inter_x_max - inter_x_min) * (inter_y_max - inter_y_min)
 
-def is_rect_completely_contained(inner_rect: Rect, outer_rect: Rect) -> bool:
-    """檢查 inner_rect 是否完全被 outer_rect 包含"""
-    x_min_in, y_min_in, x_max_in, y_max_in = inner_rect
-    x_min_out, y_min_out, x_max_out, y_max_out = outer_rect
+# def is_rect_completely_contained(inner_rect: Rect, outer_rect: Rect) -> bool:
+#     """檢查 inner_rect 是否完全被 outer_rect 包含"""
+#     x_min_in, y_min_in, x_max_in, y_max_in = inner_rect
+#     x_min_out, y_min_out, x_max_out, y_max_out = outer_rect
     
-    return (x_min_in >= x_min_out and
-            y_min_in >= y_min_out and
-            x_max_in <= x_max_out and
-            y_max_in <= y_max_out)
+#     return (x_min_in >= x_min_out and
+#             y_min_in >= y_min_out and
+#             x_max_in <= x_max_out and
+#             y_max_in <= y_max_out)

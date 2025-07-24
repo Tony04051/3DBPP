@@ -29,7 +29,7 @@ def run_packing_simulation(args):
     # 示例中從 CSV 讀取
     conveyor_items = []
     try:
-        with open('conveyor_items_val.csv', 'r', encoding='utf-8') as f:
+        with open('./cases/conveyor_items_2_random.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 raw_dims = tuple(map(float, row['base_dimensions'].strip('()').split(',')))
@@ -58,10 +58,11 @@ def run_packing_simulation(args):
         item_counter += 1
         print(f"\n--- 裝箱迴圈 #{item_counter} ---")
         
-        # 步驟 1: 候選物品盤點 (這裡我們簡化為輸送帶上所有物品)
+        # 步驟 1: 建立候選物品列表
         conveyor_lookahead = conveyor_items[:LOOKAHEAD_DEPTH]
-        # 合併兩個列表
-        candidate_items = conveyor_lookahead + temp
+        # 合併兩個列表取前四個
+        candidate_items_repo = temp + conveyor_lookahead
+        candidate_items = candidate_items_repo[:4]
         print(f"候選物品: {[item.id for item in candidate_items]}")
 
         if not candidate_items:
@@ -108,6 +109,10 @@ def run_packing_simulation(args):
     print("裝箱模擬結束。")
     print(f"總共放置了 {len(cage.packed_items)} 個物品。")
     print(f"最終籠車重量: {cage.current_weight:.2f}kg / {cage.weight_limit}kg")
+    V=0
+    for item in cage.packed_items:
+        V += item.calc_dimensions[0] * item.calc_dimensions[1] * item.calc_dimensions[2]
+    print(f"籠車空間利用率: {V/ (cage.dimensions[0] * cage.dimensions[1] * cage.dimensions[2])*100:.2f}%")
     print("="*40)
     # 可視化結果
     from visualizer import plot_cage_plotly 

@@ -6,7 +6,20 @@ from config import MEASUREMENT_ERROR
 
 @dataclass
 class Item:
-    """貨物的資料結構。"""
+    """
+    貨物的資料結構:
+    [id: int
+    base_dimensions: tuple[float, float, float] (長, 寬, 高)
+    weight: float
+    position: tuple[float, float, float](x, y, z) in the cage
+    允許的旋轉方向列表 [0-5]
+    0: (l, w, h), 1: (w, l, h), 2: (l, h, w), 3: (h, l, w), 4: (w, h, l), 5: (h, w, l)
+    allowed_rotations: list[int]
+    rotation_type: int = 0 
+    is_fragile: bool = False
+    calc_dimensions: tuple[float, float, float]
+    get_rotated_dimensions(): 根據旋轉類型返回計算後的貨物尺寸 (d, w, h)]
+    """
     id: int
     # 原始尺寸
     base_dimensions: tuple[float, float, float]  # (長, 寬, 高)
@@ -33,7 +46,7 @@ class Item:
         )
 
     def get_rotated_dimensions(self, rotation_type: int) -> tuple[float, float, float]:
-        """根據旋轉類型返回計算後的貨物尺寸 (d, w, h)。"""
+        """根據旋轉類型返回計算後的貨物尺寸 (l, w, h)"""
         l, w, h = self.calc_dimensions
         if rotation_type == 0:   # (l, w, h)
             return l, w, h
