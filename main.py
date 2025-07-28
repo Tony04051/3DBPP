@@ -7,6 +7,7 @@ from typing import cast, Tuple
 from bpp_solver.data_structures import Item, CageTrolley
 from bpp_solver.surface_manager import SurfaceManager
 from bpp_solver.packer import Packer
+from bpp_solver.mc_packer import MCTS_Packer
 from config import *
 
 def run_packing_simulation(args):
@@ -29,7 +30,7 @@ def run_packing_simulation(args):
     # 示例中從 CSV 讀取
     conveyor_items = []
     try:
-        with open('./cases/conveyor_items_2_random.csv', 'r', encoding='utf-8') as f:
+        with open('./cases/conveyor_items_2_ascending.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 raw_dims = tuple(map(float, row['base_dimensions'].strip('()').split(',')))
@@ -51,7 +52,7 @@ def run_packing_simulation(args):
         return
     # 暫存區
     temp = []
-
+    
     # --- 主迴圈 ---
     item_counter = 0
     while conveyor_items or temp:

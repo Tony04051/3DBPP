@@ -50,12 +50,6 @@ class Packer:
                     #     print(f"平面 {surface} 太小，無法放置物品 {item.id, item_dims}。")
                     #     continue # 平面太小，跳到下一個平面
                     
-                    if item.id == 11:  # 特例debug
-                        print(item_dims)
-                        print(surface.rect[2] - surface.rect[0] - item_dims[0],
-                              surface.rect[3] - surface.rect[1] - item_dims[1])
-                        print(f"嘗試放置物品 {item.id} 在平面 {surface} ")
-                    
                     # 步驟 2.3: 約束檢查
                     is_valid = con.is_placement_valid(
                         cage=self.cage,
@@ -104,5 +98,5 @@ class Packer:
         
         print(f"籠車狀態已更新。當前重量: {self.cage.current_weight:.2f}kg, "
               f"剩餘支撐平面: {len(self.cage.support_surfaces)}個。")
-        print("剩餘支撐平面列表:"
-              f"{[f'平面{idx}: z={s.z}, rect={s.rect}' for idx, s in enumerate(self.cage.support_surfaces)]}")
+        # print("剩餘支撐平面列表:"
+        #       f"{[f'平面{idx}: z={s.z}, rect={s.rect}' for idx, s in enumerate(self.cage.support_surfaces)]}")

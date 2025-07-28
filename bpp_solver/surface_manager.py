@@ -113,7 +113,7 @@ class SurfaceManager:
                 ))
         return new_surfaces
     
-    # 箱子無法從旁放入
+    # 箱子可以從一側放入或上方放入
     # def _cut_surface(self, surface: SupportSurface, cutter_rect: Rect) -> list[SupportSurface]:
     #     """
     #     從一個平面(surface)中，挖掉一個矩形區域(cutter_rect)。
