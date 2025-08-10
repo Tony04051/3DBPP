@@ -1,4 +1,3 @@
-# bpp_solver/mcts_node.py (這可以是一個新檔案，或放在 packer.py 內部)
 from __future__ import annotations
 import math
 from dataclasses import dataclass, field
@@ -10,7 +9,7 @@ class MCTS_Node:
     """代表 MCTS 搜尋樹中的一個節點"""
     # 節點狀態
     state: CageTrolley # 該節點代表的籠車狀態
-    parent: Optional[MCTS_Node] = None
+    parent: Optional[MCTS_Node] = None #型別可以是MCTS_Node，也可以是 None
     children: List[MCTS_Node] = field(default_factory=list)
     
     # 導致這個狀態的動作

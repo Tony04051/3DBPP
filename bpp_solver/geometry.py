@@ -1,5 +1,3 @@
-# bpp_solver/geometry.py
-
 Rect = tuple[float, float, float, float]  # (x_min, y_min, x_max, y_max)
 
 def get_rect_area(rect: Rect) -> float:
@@ -19,12 +17,8 @@ def get_intersection_area(rect1: Rect, rect2: Rect) -> float:
     inter_y_min = max(y_min1, y_min2)
     inter_x_max = min(x_max1, x_max2)
     inter_y_max = min(y_max1, y_max2)
-
-    # 如果沒有交集，寬度或長度會是負數或零
-    if inter_x_min >= inter_x_max or inter_y_min >= inter_y_max:
-        return 0.0
-    
-    return (inter_x_max - inter_x_min) * (inter_y_max - inter_y_min)
+    inter_rect = (inter_x_min, inter_y_min, inter_x_max, inter_y_max)
+    return get_rect_area(inter_rect)
 
 # def is_rect_completely_contained(inner_rect: Rect, outer_rect: Rect) -> bool:
 #     """檢查 inner_rect 是否完全被 outer_rect 包含"""

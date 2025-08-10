@@ -72,6 +72,7 @@ class SurfaceManager:
             return self._merge_surfaces(final_surfaces)
         else:
             return final_surfaces
+        
     def _cut_surface(self, surface: SupportSurface, cutter_rect: Rect) -> list[SupportSurface]:
         """
         從一個平面(surface)中，挖掉一個矩形區域(cutter_rect)。
@@ -88,7 +89,7 @@ class SurfaceManager:
         inter_xmax = min(s_xmax, c_xmax)
         inter_ymax = min(s_ymax, c_ymax)
 
-        # 根據交集矩形，產生四個可能的剩餘矩形區域
+        # 根據交集矩形，產生四個可能的新平面
         # 1. 下方區域 (Below)
         if inter_ymin > s_ymin:
             remaining_rects.append((s_xmin, s_ymin, s_xmax, inter_ymin))
@@ -97,10 +98,10 @@ class SurfaceManager:
             remaining_rects.append((s_xmin, inter_ymax, s_xmax, s_ymax))
         # 3. 左方區域 (Left)
         if inter_xmin > s_xmin:
-            remaining_rects.append((s_xmin, inter_ymin, inter_xmin, inter_ymax))
+            remaining_rects.append((s_xmin, s_ymin, inter_xmin, s_ymax))
         # 4. 右方區域 (Right)
         if inter_xmax < s_xmax:
-            remaining_rects.append((inter_xmax, inter_ymin, s_xmax, inter_ymax))
+            remaining_rects.append((inter_xmax, s_ymin, s_xmax, s_ymax))
 
         # 將有效的矩形轉換為 SupportSurface 物件
         new_surfaces = []
@@ -112,89 +113,52 @@ class SurfaceManager:
                     supporting_items=surface.supporting_items
                 ))
         return new_surfaces
-    
-    # 箱子可以從一側放入或上方放入
-    # def _cut_surface(self, surface: SupportSurface, cutter_rect: Rect) -> list[SupportSurface]:
-    #     """
-    #     從一個平面(surface)中，挖掉一個矩形區域(cutter_rect)。
-    #     返回切割後剩餘的、有效的 SupportSurface 列表。
-    #     這是一個健壯的切割算法。
-    #     """
-    #     remaining_rects = []
-    #     s_xmin, s_ymin, s_xmax, s_ymax = surface.rect
-    #     c_xmin, c_ymin, c_xmax, c_ymax = cutter_rect
-
-    #     # 計算交集
-    #     inter_xmin = max(s_xmin, c_xmin)
-    #     inter_ymin = max(s_ymin, c_ymin)
-    #     inter_xmax = min(s_xmax, c_xmax)
-    #     inter_ymax = min(s_ymax, c_ymax)
-
-    #     # 根據交集矩形，產生四個可能的剩餘矩形區域
-    #     # 1. 下方區域 (Below)
-    #     if inter_ymin > s_ymin:
-    #         remaining_rects.append((s_xmin, s_ymin, s_xmax, inter_ymin))
-    #     # 4. 右方區域 (Right)
-    #     if inter_xmax < s_xmax:
-    #         remaining_rects.append((inter_xmax, s_ymin, s_xmax, s_ymax))
-
-    #     # 將有效的矩形轉換為 SupportSurface 物件
-    #     new_surfaces = []
-    #     for rect in remaining_rects:
-    #         if rect[0] < rect[2] and rect[1] < rect[3]:  # 確保是有效的矩形
-    #             new_surfaces.append(SupportSurface(
-    #                 z=surface.z,
-    #                 rect=rect,
-    #                 supporting_items=surface.supporting_items
-    #             ))
-    #     return new_surfaces
 
     def _merge_surfaces(self, surfaces: list[SupportSurface]) -> list[SupportSurface]:
-        """
-        合併所有高度相同且在XY平面上相鄰的平面。
-        這是一個比較複雜的貪婪算法。
-        """
-        # 按 z 值分組
-        surfaces_by_z = {}
-        for s in surfaces:
-            if s.z not in surfaces_by_z:
-                surfaces_by_z[s.z] = []
-            surfaces_by_z[s.z].append(s)
+            """
+            合併所有高度相同且在XY平面上相鄰並有一邊完美對齊的平面
+            """
+            # 按 z 值分組
+            surfaces_by_z = {}
+            for s in surfaces:
+                if s.z not in surfaces_by_z:
+                    surfaces_by_z[s.z] = []
+                surfaces_by_z[s.z].append(s)
 
-        merged_surfaces = []
-        for z, group in surfaces_by_z.items():
-            # 只要該高度的平面多於一個，就嘗試合併
-            while len(group) > 1:
-                merged_one_pair = False
-                # 暴力遍歷所有對，尋找可合併的
-                for i in range(len(group)):
-                    for j in range(i + 1, len(group)):
-                        s1, s2 = group[i], group[j]
-                        merged_rect = self._try_merge_two_rects(s1.rect, s2.rect)
-                        
-                        if merged_rect:
-                            # 成功合併，創建新平面，並從 group 中移除舊的兩個
-                            new_supporting_items = list(set(s1.supporting_items + s2.supporting_items))
-                            merged_s = SupportSurface(z, merged_rect, new_supporting_items)
+            merged_surfaces = []
+            for z, group in surfaces_by_z.items():
+                # 只要該高度的平面多於一個，就嘗試合併
+                while len(group) > 1:
+                    merged_one_pair = False
+                    # 暴力遍歷所有對，尋找可合併的
+                    for i in range(len(group)):
+                        for j in range(i + 1, len(group)):
+                            s1, s2 = group[i], group[j]
+                            merged_rect = self._try_merge_two_rects(s1.rect, s2.rect)
                             
-                            # 移除舊的平面 (注意從後往前刪除避免 index 錯亂)
-                            group.pop(j)
-                            group.pop(i)
-                            
-                            group.append(merged_s)
-                            merged_one_pair = True
-                            break # 跳出內層迴圈
-                    if merged_one_pair:
-                        break # 跳出外層迴圈
+                            if merged_rect:
+                                # 成功合併，創建新平面，並從 group 中移除舊的兩個
+                                new_supporting_items = list(set(s1.supporting_items + s2.supporting_items))
+                                merged_s = SupportSurface(z, merged_rect, new_supporting_items)
+                                
+                                # 移除舊的平面 (注意從後往前刪除避免 index 錯亂)
+                                group.pop(j)
+                                group.pop(i)
+                                
+                                group.append(merged_s)
+                                merged_one_pair = True
+                                break # 跳出內層迴圈
+                        if merged_one_pair:
+                            break # 跳出外層迴圈
+                    
+                    # 如果遍歷完所有對都無法合併，則結束該高度的合併
+                    if not merged_one_pair:
+                        break
                 
-                # 如果遍歷完所有對都無法合併，則結束該高度的合併
-                if not merged_one_pair:
-                    break
-            
-            # 將該高度處理完的平面加入最終列表
-            merged_surfaces.extend(group)
-            
-        return merged_surfaces
+                # 將該高度處理完的平面加入最終列表
+                merged_surfaces.extend(group)
+                
+            return merged_surfaces
 
     def _try_merge_two_rects(self, r1: Rect, r2: Rect) -> Rect | None:
         """嘗試合併兩個矩形，如果可以合併則返回新矩形，否則返回 None"""

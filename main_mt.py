@@ -1,7 +1,6 @@
-# main.py
-
 import argparse
 import csv
+import time
 # import numpy as np
 from typing import cast, Tuple
 from bpp_solver.data_structures import Item, CageTrolley
@@ -10,8 +9,9 @@ from bpp_solver.packer import Packer
 from bpp_solver.mc_packer import MCTS_Packer
 from config import *
 
-def run_packing_simulation(args):
 
+def run_packing_simulation(args):
+    t0 = time.time()
     # --- Phase 0: 系統初始化 ---
     print("="*40)
     print("系統初始化...")
@@ -30,7 +30,7 @@ def run_packing_simulation(args):
     # 示例中從 CSV 讀取
     conveyor_items = []
     try:
-        with open('./cases/conveyor_items_2_ascending.csv', 'r', encoding='utf-8') as f:
+        with open('./cases/conveyor_items_1.csv', 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 raw_dims = tuple(map(float, row['base_dimensions'].strip('()').split(',')))
@@ -76,7 +76,6 @@ def run_packing_simulation(args):
         # 步驟 3: 決策與執行
         if best_placement:
             selected_item = best_placement['item']
-            print(f"決策: 選擇物品 {selected_item.id} 進行放置。")
             
             # 步驟 4: 狀態更新
             mcts_packer.execute_placement(best_placement)
@@ -110,6 +109,10 @@ def run_packing_simulation(args):
     print("裝箱模擬結束。")
     print(f"總共放置了 {len(cage.packed_items)} 個物品。")
     print(f"最終籠車重量: {cage.current_weight:.2f}kg / {cage.weight_limit}kg")
+
+    t1 = time.time()
+    print(f"模擬耗時: {t1 - t0:.2f}秒")
+
     V=0
     for item in cage.packed_items:
         V += item.calc_dimensions[0] * item.calc_dimensions[1] * item.calc_dimensions[2]
@@ -120,13 +123,16 @@ def run_packing_simulation(args):
     plot_cage_plotly(cage, title="3D Bin Packing Result")
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(description="3D Bin Packing Simulation")
     
     parser.add_argument(
-        '--merge', 
-        action='store_true', 
-        help='啟用相鄰平面合併功能'
+        '--merge', action='store_true', help='啟用相鄰平面合併功能'
     )
     
+    parser.add_argument(
+        '--num_simu', type=int, default=100,
+        help='每個 MCTS 節點的模擬次數 (預設 500)'
+    )
     parsed_args = parser.parse_args()
     run_packing_simulation(parsed_args)

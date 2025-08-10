@@ -2,12 +2,12 @@
 # 存放所有可調整的參數
 # --- 生成箱子參數 ---
 # 物品尺寸和重量的範圍
-NUM_ITEMS = 10  # 生成的物品數量
+NUM_ITEMS = 30  # 生成的物品數量
 ITEM_DIMENSIONS_RANGE = {
-    'length': (10, 100),  # 單位: cm
-    'width': (1, 100),   # 單位: cm
-    'height': (10, 100),   # 單位: cm
-    'weight': (1, 30)  # 單位: kg
+    'length': (10, 50),  # 單位: cm
+    'width': (10, 50),   # 單位: cm
+    'height': (10, 50),   # 單位: cm
+    'weight': (5, 30)  # 單位: kg
 }
 # --- 籠車參數 ---
 # (長, 寬, 高)，單位: cm
@@ -22,7 +22,9 @@ TEMP_AREA_CAPACITY = 3
 # 系統可往前看的貨物數量 (暫時未使用)
 LOOKAHEAD_DEPTH = 3
 # 穩定度因子：貨物底部需與支撐面接觸面積的最小比例
-STABILITY_FACTOR = 0.7
+STABILITY_FACTOR = 0.75
+# 合併平面時允許的高度差
+MERGE_MARGIN = 1e-6
 
 # --- 評分函式權重 ---
 W_Z_SCORE = 1.0

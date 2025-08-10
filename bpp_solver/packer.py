@@ -25,6 +25,11 @@ class Packer:
             'rotation_type': None
         }
 
+        sorted_surfaces = sorted(
+                    self.cage.support_surfaces, 
+                    key=lambda s: (s.z, s.rect[1], s.rect[0]) # z -> y_min -> x_min
+                )
+        print(sorted_surfaces)
         # 步驟 1: 遍歷所有候選物品
         for item in candidate_items:
             # 步驟 2.1: 遍歷所有旋轉下的l,w,h
@@ -33,16 +38,11 @@ class Packer:
                 
                 # 步驟 2.2: 遍歷所有可用的支撐平面
                 # 按照 Bottom-Left 策略對平面進行排序
-                sorted_surfaces = sorted(
-                    self.cage.support_surfaces, 
-                    key=lambda s: (s.z, s.rect[1], s.rect[0]) # z -> y_min -> x_min
-                )
                 
                 for surface in sorted_surfaces:
                     # 在該平面上，放置點就是其左下角
                     # (x_min, y_min, z)
                     placement_point = (surface.rect[0], surface.rect[1], surface.z)
-                    
                     # # 檢查此放置點是否能容納物品
                     # # 平面必須足夠大
                     # if surface.rect[2] - surface.rect[0] < item_dims[0] or \

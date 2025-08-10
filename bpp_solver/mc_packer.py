@@ -1,6 +1,4 @@
 # 蒙地卡羅
-# bpp_solver/packer_mcts.py (建議使用一個新檔案以示區別)
-
 import math
 import random
 import copy
@@ -80,15 +78,14 @@ class MCTS_Packer:
 
     def _simulate(self, start_state: CageTrolley, remaining_items: list[Item]) -> float:
         """
-        快速模擬 (Rollout)。
-        使用一個簡單、快速的策略來放置剩餘的物品。
-        返回最終放置物品的總體積作為評分。
+        快速模擬 (Rollout)
+        使用一個簡單、快速的策略來放置剩餘的物品
+        返回最終放置物品的總體積作為評分
         """
         current_state = copy.deepcopy(start_state)
         items_to_place = remaining_items[:]
         placed_volume = 0
         
-        # 啟發式剪枝：在模擬中，我們採用一個非常簡單的貪婪策略
         while items_to_place:
             item = items_to_place.pop(0) # 順序處理
             # 尋找第一個可行的放置點 (這就是一個快速的策略)
@@ -109,10 +106,7 @@ class MCTS_Packer:
 
     # --- 輔助函式 (啟發式剪枝和動作生成) ---
     def _get_possible_actions(self, cage: CageTrolley, candidate_items: list[Item]) -> List[Dict]:
-        """
-        這就是啟發式剪枝的地方。它只生成有效的放置方案。
-        這個函式與您舊的 `pack` 方法非常相似。
-        """
+        # 篩選出可行解
         possible_actions = []
         for item in candidate_items:
             for rotation_type in item.allowed_rotations:
