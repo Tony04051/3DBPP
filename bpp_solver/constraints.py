@@ -90,11 +90,11 @@ def check_collision_constraint(
     x1_min, y1_min, z1_min = pos
     x1_max_up = x1_min + dims[0]
     y1_max_up = y1_min + dims[1]
-    z1_max_up = cage.dimensions[2] - z1_min  # 高度不變，從頂部插入
+    z1_max_up = cage.dimensions[2] # 高度不變，從頂部插入
     # 2. 從一側面插入, 假設是x = (0, 100), y = 0
     x1_min, y1_min, z1_min = pos
     x1_max_s = x1_min + dims[0]
-    y1_max_s = cage.dimensions[2] - y1_min
+    y1_max_s = cage.dimensions[1]
     z1_max_s = z1_min + dims[2]
 
     # 遍歷所有已經放置的物品
@@ -128,7 +128,7 @@ def check_collision_constraint(
             return False
         
     return True
-
+# 拆成是否重疊、夾取路徑是否通暢兩個函式
 # 箱子只能從上方放入
 # def check_collision_constraint(
 #     cage: CageTrolley,
