@@ -1,24 +1,19 @@
 # bpp_solver/data_structures.py
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from config import MEASUREMENT_ERROR
+from typing import Any
 # --- Phase 0: Data Structures ---
 
 @dataclass
 class Item:
     """
-    貨物的資料結構:
-    [id: int
-    base_dimensions: tuple[float, float, float] (長, 寬, 高)
-    weight: float
-    position: tuple[float, float, float](x, y, z) in the cage
-    允許的旋轉方向列表 [0-5]
-    0: (l, w, h), 1: (w, l, h), 2: (l, h, w), 3: (h, l, w), 4: (w, h, l), 5: (h, w, l)
-    allowed_rotations: list[int]
-    rotation_type: int = 0 
-    is_fragile: bool = False
-    calc_dimensions: tuple[float, float, float]
-    get_rotated_dimensions(): 根據旋轉類型返回計算後的貨物尺寸 (d, w, h)]
+    id(int), base_dimensions(貨物實際大小), weight,position: 貨物左下角座標, 
+    allowed_rotations(list[rotation_type]), 
+    rotation_type: 0: (l, w, h), 1: (w, l, h), 2: (l, h, w), 3: (h, l, w), 4: (w, h, l), 5: (h, w, l)
+    is_fragile(bool)是否易碎
+    calc_dimensions(貨物+量測預估誤差)
+    get_rotated_dimensions(): 根據旋轉類型返回計算後的貨物尺寸 (d, w, h)
     """
     id: int
     # 原始尺寸
@@ -63,10 +58,31 @@ class Item:
         else:
             raise ValueError(f"不合法的旋轉類型: {rotation_type}")
 
+    def to_dict(self) -> dict[str, Any]:
+        """將 Item 物件轉換為可序列化為 JSON 的字典。"""
+        # asdict 會自動將 dataclass 轉換為字典
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> 'Item':
+        """從字典創建一個 Item 物件。"""
+        # 只選擇 Item 的 __init__ 方法需要的參數來創建
+        return Item(
+            id=d.get('id'),
+            base_dimensions=tuple(d.get('base_dimensions', [])),
+            weight=d.get('weight'),
+            allowed_rotations=d.get('allowed_rotations', list(range(6))),
+            is_fragile=d.get('is_fragile', False)
+        )
 
 @dataclass
 class SupportSurface:
-    """代表一個可以放置物品的支撐平面。"""
+    """可以放置物品的支撐平面
+    z(平面高度),
+    rect(平面座標),
+    supporting_items(支撐此平面的物品ID列表),
+    area()(返回該平面的面積)
+    """
     z: float  # 該平面的高度
     # 平面的二維邊界 (x_min, y_min, x_max, y_max)
     rect: tuple[float, float, float, float]
@@ -76,14 +92,19 @@ class SupportSurface:
     @property
     # 讓area() 成為一個屬性
     def area(self) -> float:
-        """計算並返回該平面的面積。"""
+        """計算並返回該平面的面積"""
         x_min, y_min, x_max, y_max = self.rect
         return (x_max - x_min) * (y_max - y_min)
 
 
 @dataclass
 class CageTrolley:
-    """代表一台籠車。"""
+    """id(str),
+    dimensions(長, 寬, 高),
+    weight_limit,
+    packed_items,
+    support_surfaces
+    """
     id: str
     # 籠車內部可用尺寸 (長, 寬, 高)
     dimensions: tuple[float, float, float]
@@ -92,6 +113,7 @@ class CageTrolley:
     # 籠車狀態
     packed_items: list[Item] = field(default_factory=list)
     support_surfaces: list[SupportSurface] = field(default_factory=list)
+    corner_points: list[tuple[float, float, float]] = field(default_factory=lambda: [(0.0, 0.0, 0.0)])
     
     # 初始化
     def __post_init__(self):
@@ -117,4 +139,20 @@ class CageTrolley:
         item.rotation_type = rotation_type
         self.packed_items.append(item)
         # 注意：更新 support_surfaces 的邏輯會比較複雜，我們稍後在 surface_manager.py 中實現
-        print(f"成功將物品 {item.id} 放置在 {position}，旋轉類型 {rotation_type}") 
+        # print(f"成功將物品 {item.id} 放置在 {position}，旋轉類型 {rotation_type}") 
+    
+    def to_dict(self) -> dict[str, Any]:
+        """將 CageTrolley 物件轉換為字典。"""
+        return asdict(self)
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> 'CageTrolley':
+        """從字典創建一個 CageTrolley 物件。"""
+        # 從 packed_items 的字典列表中恢復 Item 物件
+        packed_items_objs = [Item.from_dict(item_dict) for item_dict in d.get('packed_items', [])]
+        
+        return CageTrolley(
+            id=d.get('id'),
+            dimensions=tuple(d.get('dimensions', [])),
+            weight_limit=d.get('weight_limit'),
+            packed_items=packed_items_objs
+        )

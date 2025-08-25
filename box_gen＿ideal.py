@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import random
 from MCTS.data_structures import Item
-from config import NUM_ITEMS, ITEM_DIMENSIONS_RANGE, CAGE_DIMENSIONS, CAGE_WEIGHT_LIMIT
+from config import NUM_ITEMS, ITEM_DIMENSIONS_RANGE 
 conveyor_items = []
 # 生成隨機物品
 for i in range(NUM_ITEMS):
@@ -42,7 +42,7 @@ for i in range(NUM_ITEMS):
         is_fragile=False  # 假設所有物品都不是易碎的
     )
     conveyor_items.append(item)
-    # print(conveyor_items)
+    print(conveyor_items)
 conveyor_items_df = pd.DataFrame([item.__dict__ for item in conveyor_items])
 
 if not os.path.exists('cases'):
@@ -50,28 +50,9 @@ if not os.path.exists('cases'):
 
 i = 0
 while i >= 0:
-    # print(i)
+    print(i)
     if not os.path.exists(f'cases/conveyor_items_{i}.csv'): 
         conveyor_items_df.to_csv(f'cases/conveyor_items_{i}.csv', index=False, encoding='utf-8')
         break
     else:
         i += 1   
-# 計算生成物體總體積與重量
-total_volume = sum(item.calc_dimensions[0] * item.calc_dimensions[1] * item.calc_dimensions[2] for item in conveyor_items)
-total_weight = sum(item.weight for item in conveyor_items)
-print(f"總體積: {total_volume} cm³")
-print(f"總重量: {total_weight} kg")
-# 平均尺寸
-average_dimensions = (
-    sum(item.calc_dimensions[0] for item in conveyor_items) / NUM_ITEMS,
-    sum(item.calc_dimensions[1] for item in conveyor_items) / NUM_ITEMS,
-    sum(item.calc_dimensions[2] for item in conveyor_items) / NUM_ITEMS
-)
-print(f"平均尺寸: {average_dimensions[0]:.2f} cm x {average_dimensions[1]:.2f} cm x {average_dimensions[2]:.2f} cm")
-# 平均重量
-average_weight = total_weight / NUM_ITEMS
-print(f"平均重量: {average_weight:.2f} kg")
-# 籠車與物品的比例
-cage_volume = CAGE_DIMENSIONS[0] * CAGE_DIMENSIONS[1] * CAGE_DIMENSIONS[2]
-cage_weight_limit = CAGE_WEIGHT_LIMIT
-print(f"籠車與所有貨物體積比例: {total_volume / cage_volume:.2f}")  
