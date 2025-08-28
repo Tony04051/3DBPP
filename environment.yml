@@ -1,0 +1,22 @@
+name: binpack
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - numpy>=2.2
+  - pandas>=2.3
+  - networkx>=3.5
+  - tqdm
+  - psutil
+  - pyyaml
+  - requests
+  - python-dotenv
+  - matplotlib>=3.8
+  - plotly
+  - pillow
+  # Web / API
+  - fastapi
+  - uvicorn
+  - pip:
+      - -r requirements.txt

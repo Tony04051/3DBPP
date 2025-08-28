@@ -9,8 +9,8 @@ from threading import Lock
 from bpp_solver.data_structures import Item, CageTrolley
 from bpp_solver.CP.Heuristics.packer import Packer as CP_HeuristicsPacker
 from bpp_solver.CP.MCTS.mc_packer import MCTS_Packer as CP_MCTS_Packer
-# from bpp_solver.EMS.Heuristics.packer import Packer as EMS_HeuristicsPacker
-# from bpp_solver.EMS.MCTS.mc_packer import MCTS_Packer as EMS_MCTS_Packer
+from bpp_solver.EMS.Heuristics.packer import Packer as EMS_HeuristicsPacker
+from bpp_solver.EMS.MCTS.mc_packer import MCTS_Packer as EMS_MCTS_Packer
 
 # --- 應用程式初始化 ---
 app = FastAPI(
@@ -75,8 +75,8 @@ class UniversalResponse(BaseModel):
 PACKER_INSTANCES = {
     ('cp', 'heuristics'): CP_HeuristicsPacker(),
     ('cp', 'mcts'): CP_MCTS_Packer(),
-#     ('ems', 'heuristics'): EMS_HeuristicsPacker(),
-#     ('ems', 'mcts'): EMS_MCTS_Packer(),
+    ('ems', 'heuristics'): EMS_HeuristicsPacker(),
+    ('ems', 'mcts'): EMS_MCTS_Packer(),
 }
 
 # 使用一個字典來管理狀態，這樣更容易擴展
@@ -154,16 +154,23 @@ def decide_next_move(request: DecideMoveRequest):
             best_placement = packer_instance.pack(app_state.cage, candidate_items)
             print(f" [伺服器日誌] Packer 返回的放置方案: {best_placement}")
             
-  
-            print(f" [伺服器日誌] 狀態已更新。放置物品 ID: {original_item.id}")
+            if best_placement:
+                item_to_place = best_placement['item']
+                position = best_placement['position']
+                rotation_type = best_placement['rotation_type']
+                
+                # 永久更新伺服器端的籠車狀態
+                # 注意：pack 方法可能返回了一個 Item 副本，我們要用 ID 在原始列表中找到它
+                original_item = next(i for i in candidate_items if i.id == item_to_place.id)
+                print(f" [伺服器日誌] 狀態已更新。放置物品 ID: {original_item.id}")
 
-            return UniversalResponse(
-                status="success",
-                decision=PlacementDecision(
-                    item=ItemModel(**original_item.to_dict()),
-                    position=position,
-                    rotation_type=rotation_type
-                ),
+                return UniversalResponse(
+                    status="success",
+                    decision=PlacementDecision(
+                        item=ItemModel(**original_item.to_dict()),
+                        position=position,
+                        rotation_type=rotation_type
+                    )
                 )
             else:
                 print("  [伺服器日誌] 找不到可行的放置方案。")

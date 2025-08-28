@@ -1,58 +1,76 @@
-# 生成測試用item list
-
-import csv
-import os 
-import pandas as pd
 import random
-from MCTS.data_structures import Item
-from config import NUM_ITEMS, ITEM_DIMENSIONS_RANGE 
-conveyor_items = []
-# 生成隨機物品
-for i in range(NUM_ITEMS):
-    item_id = i+1
-    length = random.randint(*ITEM_DIMENSIONS_RANGE['length'])
-    width = random.randint(*ITEM_DIMENSIONS_RANGE['width'])
-    height = random.randint(*ITEM_DIMENSIONS_RANGE['height'])
-    weight = random.randint(*ITEM_DIMENSIONS_RANGE['weight'])
+from typing import List, Tuple, Optional
+from .bpp_solver.data_structures import Item
 
-    allowed_rotations = []
-    # 隨機決定三種情形
-    x1 = random.randint(0, 10)
-    x2 = random.randint(0, 10)
-    x3 = random.randint(0, 10)
-    p1 = x1 / (x1 + x2 + x3)
-    p2 = x2 / (x1 + x2 + x3)
-    p3 = x3 / (x1 + x2 + x3)
-    # 隨機決定三種情形
-    # 1. 允許所有旋轉
-    if max(p1, p2, p3) == p1:
-        allowed_rotations = list(range(6))
-    # 2. 不允許翻轉
-    elif max(p1, p2, p3) == p2:
-        allowed_rotations = [0, 1]  
-    # 3. 不允許翻轉也不允許旋轉
-    else:
-        allowed_rotations = [0]
+# 論文設定（AAAI-21）
+BIN_L = BIN_W = BIN_H = 10  # L=W=H=10
+BIN_VOL = BIN_L * BIN_W * BIN_H
 
-    item = Item(
-        id=item_id,
-        base_dimensions=(length, width, height),
-        allowed_rotations=allowed_rotations,
-        weight=weight,
-        is_fragile=False  # 假設所有物品都不是易碎的
+# 這裡用 {1,2,3,4}^3 恰好 64 種，皆 <= 5 (<= L/2)
+CATALOG_64: List[Tuple[int, int, int]] = [(x, y, z) for x in (1,2,3,4)
+                                          for y in (1,2,3,4)
+                                          for z in (1,2,3,4)]
+
+# ---- 你的專案的 Item 類別（請按需調整 new_item 的對應）----
+# from ...data_structures import Item
+
+def new_item(idx: int, dims: Tuple[int,int,int], allow_rotations: bool = True):
+    """
+    依你的 Item 介面做最小假設：
+    - id: 字串
+    - dimensions: (l,w,h)
+    - allowed_rotations: e.g. [0..5] 若支援 6 面取向；不支援就給 [0]
+    其他欄位（重量/易碎）RS 基準不強制，需要再加可自己擴充。
+    """
+    allowed = list(range(6)) if allow_rotations else [0]
+    weight = random.randint(1, 20)
+    return Item(
+        id=idx,
+        base_dimensions=(float(dims[0]), float(dims[1]), float(dims[2])),
+        allowed_rotations=allowed,
+        weight=weight  # RS 基準不強制
     )
-    conveyor_items.append(item)
-    print(conveyor_items)
-conveyor_items_df = pd.DataFrame([item.__dict__ for item in conveyor_items])
 
-if not os.path.exists('cases'):
-    os.makedirs('cases')
+def gen_one_rs_sequence(seed: Optional[int] = None,
+                        allow_rotations: bool = True) -> List['Item']:
+    """
+    產生一條 RS 序列：從 64 型別中隨機抽樣（可重複），
+    直到累計體積 >= bin 體積（論文 RS 的做法）。
+    """
+    if seed is not None:
+        random.seed(seed)
 
-i = 0
-while i >= 0:
-    print(i)
-    if not os.path.exists(f'cases/conveyor_items_{i}.csv'): 
-        conveyor_items_df.to_csv(f'cases/conveyor_items_{i}.csv', index=False, encoding='utf-8')
-        break
-    else:
-        i += 1   
+    seq: List['Item'] = []
+    total_vol = 0
+    idx = 1
+    while total_vol < BIN_VOL:
+        l, w, h = random.choice(CATALOG_64)
+        seq.append(new_item(idx, (l, w, h), allow_rotations=allow_rotations))
+        total_vol += l * w * h
+        idx += 1
+    return seq
+
+def gen_rs_dataset(num_sequences: int,
+                   seed: Optional[int] = None,
+                   allow_rotations: bool = True) -> List[List['Item']]:
+    """
+    產生多條 RS 序列。論文測試用 2,000 條，你可傳 2000。
+    """
+    if seed is not None:
+        random.seed(seed)
+    dataset: List[List['Item']] = []
+    for s in range(num_sequences):
+        # 為了可重現，也可對每條序列再加一個局部種子：seed+s
+        seq = gen_one_rs_sequence(seed=None, allow_rotations=allow_rotations)
+        dataset.append(seq)
+    return dataset
+
+if __name__ == "__main__":
+    # 測試用
+    rs_data = gen_rs_dataset(5, seed=1234)
+    for i, seq in enumerate(rs_data):
+        print(f"--- RS 序列 #{i+1} (共 {len(seq)} 件) ---")
+        for item in seq:
+            print(f"  {item.id}: {item.base_dimensions}, 允許旋轉: {item.allowed_rotations}")
+        total_vol = sum(item.calc_dimensions[0] * item.calc_dimensions[1] * item.calc_dimensions[2] for item in seq)
+        print(f"  總體積: {total_vol} (箱子體積: {BIN_VOL})\n")

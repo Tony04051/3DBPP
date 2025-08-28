@@ -1,199 +1,240 @@
+import math
 import time
 import random
 import copy
 from typing import List, Dict, Any, Tuple, Set
 
 from ...data_structures import Item, CageTrolley
-from .mcts_node import MCTSNode
 from .. import constraints as con
 from config import *
 
+class _OrderNode:
+    __slots__ = ("parent", "children", "w", "n", "remaining", "sim_cage", "action", "added")
+    def __init__(self, parent, remaining: List[Item], sim_cage: CageTrolley,
+                 action: Dict[str, Any] | None = None, added: float = 0.0):
+        self.parent = parent
+        self.children: List["_OrderNode"] = []
+        self.w: float = 0.0              # 累積回傳分數（新增體積）
+        self.n: int = 0                  # 訪問次數
+        self.remaining = remaining[:]    # 尚未放入的 items（視窗內）
+        self.sim_cage = sim_cage         # 走到此節點後的模擬籠車（淺拷貝世界）
+        self.action = action             # 抵達此節點用的動作（root 的孩子 = 第一手）
+        self.added = added               # 路徑至此的新增體積總和
+
+
 class MCTS_Packer:
-    def __init__(self, num_simulations: int = 100, rollout_depth: int = TEMP_AREA_CAPACITY +1):
+    """
+    BPP-k + MCTS lookahead（open-loop 序列層 MCTS）
+    - 每次決策在當前最多 4 件候選中選擇「第一步」，並同時選定角點與旋轉
+    - 複雜度約 O(k · num_simulations)，k ≤ 4
+    - pack() 會直接更新傳入的 cage
+    """
+    def __init__(self, num_simulations: int = 100, rollout_depth: int = TEMP_AREA_CAPACITY + 1,
+                 uct_c: float = 0.9):
         self.num_simulations = num_simulations
         self.rollout_depth = rollout_depth
-        print(f"MCTS Packer (CP) 初始化，模擬次數: {self.num_simulations}, 模擬深度: {self.rollout_depth}")
+        self.uct_c = uct_c
+        print(f"MCTS Packer (k-lookahead) 初始化，模擬次數: {self.num_simulations}, "
+              f"rollout深度: {self.rollout_depth}, UCT_C: {self.uct_c}")
 
-    def pack(self, cage: CageTrolley, candidate_items: list[Item]) -> Dict[str, Any] | None:
+    # ========================= Public API =========================
+    def pack(self, cage: CageTrolley, candidate_items: List[Item]) -> Dict[str, Any] | None:
         """
-        使用 MCTS 和角落點法尋找最佳的下一步放置方案。
-        使用shallow copy，執行後 cage 狀態不會被永久改變。
+        在當前候選（最多4件）中，用序列層 MCTS 選出最佳第一步，並直接落地更新 cage。
+        回傳 {'item', 'position', 'rotation_type'} 或 None（若完全無法放）。
         """
         if not candidate_items:
             return None
-        
-        root = MCTSNode(parent=None)
-        start_time = time.time()
 
-        for _ in range(self.num_simulations):
-            # 每次模擬都從一個乾淨的cage 
-            sim_cage = CageTrolley(
+        start = time.time()
+        best = self._order_mcts_first_action(
+            cage, candidate_items, iters=self.num_simulations, k=4, C=self.uct_c
+        )
+        if not best:
+            return None
+
+        # 更新cage
+        chosen_item = next(i for i in candidate_items if i.id == best['item'].id)
+        cage.add_item(chosen_item, best['position'], best['rotation_type'])
+
+        print(f"MCTS 決策耗時: {time.time() - start:.3f}s")
+        return {
+            'item': chosen_item,
+            'position': best['position'],
+            'rotation_type': best['rotation_type'],
+        }
+
+    # ====================== 序列層 MCTS 主流程 ======================
+    def _order_mcts_first_action(self, cage: CageTrolley, candidates: List[Item],
+                                 iters: int, k: int = 4, C: float = 0.9) -> Dict[str, Any] | None:
+        """
+        在視窗中（k ≤ 4）用 open-loop MCTS 選出最佳第一步（item + corner point + rotation）。
+        """
+        pool = candidates[:k] if k > 0 else candidates[:4]
+        if not pool:
+            return None
+
+        root = _OrderNode(
+            parent=None,
+            remaining=pool,
+            sim_cage=CageTrolley(
                 id=cage.id,
-                packed_items=[copy.copy(i) for i in cage.packed_items], 
+                packed_items=[copy.copy(i) for i in cage.packed_items],
                 dimensions=cage.dimensions,
                 weight_limit=cage.weight_limit
             )
-            
-            # --- MCTS 核心四步驟 ---
-            # 1. Selection
-            node, path, remaining_items = self._select(root, sim_cage, candidate_items[:])
-            
-            # 2. Expansion
-            if not node.is_fully_expanded():
-                expanded_node = self._expand(node, sim_cage, remaining_items)
-                if expanded_node is not node:
-                    path.append(expanded_node)
-                    node = expanded_node
-            
-            # 3. Simulation (Rollout)
-            items_on_path = {p.action['item'].id for p in path if p.action}
-            rollout_items = [i for i in candidate_items if i.id not in items_on_path]
-            simulation_result = self._simulate(sim_cage, rollout_items)
-            
-            # 4. Backpropagation
-            self._backpropagate(path, simulation_result)
+        )
+
+        def uct(parent_n: int, child: _OrderNode) -> float:
+            if child.n == 0:
+                return float("inf")
+            return (child.w / child.n) + C * math.sqrt(math.log(max(1, parent_n)) / child.n)
+
+        for _ in range(max(1, iters)):
+            # --- Selection ---
+            node = root
+            path = [node]
+            while node.children and node.remaining:
+                node = max(node.children, key=lambda ch: uct(node.n, ch))
+                path.append(node)
+
+            # --- Expansion ---
+            if node.remaining:
+                expanded = False
+                rem = node.remaining[:]
+                random.shuffle(rem)  # 打散避免固定偏壓
+                for item in rem:
+                    best_act = self._best_valid_action(node.sim_cage, item)
+                    if best_act is None:
+                        continue  # 這件目前放不下，換下一件
+
+                    sim_next = CageTrolley(
+                        id=node.sim_cage.id,
+                        packed_items=[copy.copy(i) for i in node.sim_cage.packed_items],
+                        dimensions=node.sim_cage.dimensions,
+                        weight_limit=node.sim_cage.weight_limit
+                    )
+                    sim_next.add_item(item, best_act['position'], best_act['rotation_type'])
+                    dx, dy, dz = item.get_rotated_dimensions(best_act['rotation_type'])
+                    child = _OrderNode(
+                        parent=node,
+                        remaining=[it for it in node.remaining if it.id != item.id],
+                        sim_cage=sim_next,
+                        action=best_act,
+                        added=node.added + dx * dy * dz
+                    )
+                    node.children.append(child)
+                    node = child
+                    path.append(node)
+                    expanded = True
+                    break
+                # 若所有剩餘 item 都放不下，則不擴展，直接 rollout
+
+            # --- Rollout ---
+            total = node.added
+            if node.remaining:
+                total += self._rollout_order(node.sim_cage, node.remaining)
+
+            # --- Backprop ---
+            for nd in path:
+                nd.n += 1
+                nd.w += total
 
         if not root.children:
             return None
-        
-        best_node = max(root.children, key=lambda c: c.n)
-        print(f"MCTS 決策耗時: {time.time() - start_time:.2f}s, 最佳動作訪問次數: {best_node.n}")
-        
-        best_item_id = best_node.action['item'].id
-        original_best_item = next(i for i in candidate_items if i.id == best_item_id)
-        self.execute_placement(cage, {'item': original_best_item,
-            'position': best_node.action['position'],
-            'rotation_type': best_node.action['rotation_type']
-        })
+        # 以 exploitation（平均分數）選第一步；也可改用 visits
+        best_child = max(root.children, key=lambda ch: (ch.w / ch.n))
+        return best_child.action
 
-        return {
-            'item': original_best_item,
-            'position': best_node.action['position'],
-            'rotation_type': best_node.action['rotation_type']
-        }
+    # ====================== 放置評分與 Rollout ======================
+    def _best_valid_action(self, cage: CageTrolley, item: Item) -> Dict[str, Any] | None:
+        """
+        在當前 cage 上，對 item 遍歷所有 (corner point × 允許旋轉)，
+        取「新增體積」最大者；若同分，偏好較低 z、較小 y、較小 x（左下角法慣例）。
+        """
+        points = self._generate_candidate_points(cage)
+        if not points:
+            return None
+        pts = sorted(points, key=lambda p: (p[2], p[1], p[0]))  # z→y→x
 
-    def _select(self, root: MCTSNode, cage: CageTrolley, items: List[Item]) -> Tuple[MCTSNode, List[MCTSNode], List[Item]]:
-        node = root
-        path = [root]
-        remaining_items = items[:]
-        
-        while node.is_fully_expanded() and node.children:
-            node = node.select_best_child()
-            path.append(node)
-            
-            selected_item_action = node.action['item']
-            item_to_remove = next((i for i in remaining_items if i.id == selected_item_action.id), None)
-            
-            if item_to_remove:
-                remaining_items.remove(item_to_remove)
-                cage.add_item(item_to_remove, node.action['position'], node.action['rotation_type'])
-            else:
-                # 如果找不到，說明 MCTS 樹的狀態與 `items` 列表不同步，這是一個潛在的錯誤
-                # 但在淺拷貝模式下，這通常不應該發生
-                pass
+        best = None
+        best_key = None  # (added, -z, -y, -x)
+        for rot in item.allowed_rotations:
+            for pos in pts:
+                if con.is_placement_valid(cage, item, pos, rot):
+                    dx, dy, dz = item.get_rotated_dimensions(rot)
+                    key = (dx * dy * dz, -pos[2], -pos[1], -pos[0])
+                    if best_key is None or key > best_key:
+                        best_key = key
+                        best = {'item': item, 'position': pos, 'rotation_type': rot}
+        return best
 
-        return node, path, remaining_items
-
-    def _expand(self, node: MCTSNode, cage: CageTrolley, items: List[Item]) -> MCTSNode:
-        if node.possible_actions is None:
-            points = self._generate_candidate_points(cage)
-            node.possible_actions = self._get_possible_actions(points, items, cage)
-
-        tried_item_ids = {child.action['item'].id for child in node.children}
-        
-        for action in node.possible_actions:
-            if action['item'].id not in tried_item_ids:
-                item = action['item']
-                cage.add_item(item, action['position'], action['rotation_type'])
-                new_node = MCTSNode(parent=node, action=action)
-                node.children.append(new_node)
-                return new_node
-    
-        return node
-
-    def _simulate(self, cage: CageTrolley, items: List[Item]) -> float:
-        """快速隨機模擬，返回最終放置物品的總體積作為評分"""
-        sim_cage = CageTrolley(
+    def _rollout_order(self, cage: CageTrolley, remaining: List[Item]) -> float:
+        """
+        對剩餘 items 做快速貪婪 rollout：
+        - 順序先打散，避免系統性偏壓
+        - 每件用 _best_valid_action 放入
+        - 回傳新增體積總和
+        """
+        sim = CageTrolley(
             id=cage.id,
             packed_items=[copy.copy(i) for i in cage.packed_items],
             dimensions=cage.dimensions,
             weight_limit=cage.weight_limit
         )
-        
-        items_in_cage_ids = {i.id for i in sim_cage.packed_items}
-        items_to_place = [i for i in items if i.id not in items_in_cage_ids]
-        random.shuffle(items_to_place)
-        
-        placed_volume = 0
-        
-        for _ in range(self.rollout_depth):
-            if not items_to_place: break
-            item = items_to_place.pop(0)
-            
-            points = self._generate_candidate_points(sim_cage)
-            action = self._find_first_valid_action(points, item, sim_cage)
-            
-            if action:
-                sim_cage.add_item(item, action['position'], action['rotation_type'])
-                dims = item.get_rotated_dimensions(action['rotation_type'])
-                placed_volume += dims[0] * dims[1] * dims[2]
-        
-        return placed_volume
+        total = 0.0
+        rem = remaining[:]
+        random.shuffle(rem)
+        for it in rem:
+            act = self._best_valid_action(sim, it)
+            if not act:
+                continue
+            sim.add_item(it, act['position'], act['rotation_type'])
+            dx, dy, dz = it.get_rotated_dimensions(act['rotation_type'])
+            total += dx * dy * dz
+        return total
 
-    def _backpropagate(self, path: List[MCTSNode], score: float):
-        for node in reversed(path):
-            node.n += 1
-            node.w += score
-
-    def _generate_candidate_points(self, cage: CageTrolley) -> Set[Tuple[float, float, float]]:
-        points = {(0.0, 0.0, 0.0)}
-        for item in cage.packed_items:
-            pos, dims = item.position, item.get_rotated_dimensions(item.rotation_type)
-            points.add((pos[0] + dims[0], pos[1], pos[2]))
-            points.add((pos[0], pos[1] + dims[1], pos[2]))
-            if not item.is_fragile:
-                points.add((pos[0], pos[1], pos[2] + dims[2]))
-
-        l, w, h = CAGE_DIMENSIONS
-        TOLERANCE = 1e-6
-        points = {p for p in points if p[0] < l - TOLERANCE and p[1] < w - TOLERANCE and p[2] < h - TOLERANCE}
-        return points
-
-    def _get_possible_actions(self, points: set, items: list, cage: CageTrolley) -> List[Dict]:
-        actions = []
-        sorted_points = sorted(list(points), key=lambda p: (p[2], p[1], p[0])) # z->y->x
-
-        for item in items:
-            for rot in item.allowed_rotations:
-                for point in sorted_points:
-                    if con.is_placement_valid(cage, item, point, rot):
-                        actions.append({'item': item, 'position': point, 'rotation_type': rot})
-                        break 
-        return actions
-
-    def _find_first_valid_action(self, points: Set, item: Item, cage: CageTrolley) -> Dict | None:
-        sorted_points = sorted(list(points), key=lambda p: (p[2], p[1], p[0])) # z->y->x
-
-        
-        for rot in item.allowed_rotations:
-            for pos in sorted_points:
-                if con.is_placement_valid(cage, item, pos, rot):
-                    return {'item': item, 'position': pos, 'rotation_type': rot}
-        return None
-    
-    def execute_placement(self, cage: CageTrolley, placement: Dict[str, Any]):
+    # ====================== Corner Points 產生 ======================
+    def _generate_candidate_points(self, cage: CageTrolley) -> List[Tuple[float, float, float]]:
         """
-        執行放置方案並更新籠車狀態
+        以目前 packed_items 生成候選 corner points（左下角法基礎版：x+/y+/（非易碎才）z+）。
+        已過濾越界與「落在任何物品體積內部」的點；允許落在面/邊界上。
+        回傳 list[tuple[x, y, z]]。
         """
-        if placement is None:
-            print("沒有放置方案可執行。")
-            return
+        def point_in_item(point: Tuple[float, float, float], packed_item: Item, tol: float = 1e-7) -> bool:
+            if packed_item.position is None:
+                return False
+            ix, iy, iz = packed_item.position
+            dx, dy, dz = packed_item.get_rotated_dimensions(packed_item.rotation_type)
+            px, py, pz = point
+            return (ix + tol < px < ix + dx - tol and
+                    iy + tol < py < iy + dy - tol and
+                    iz + tol < pz < iz + dz - tol)
 
-        item = placement['item']
-        position = placement['position']
-        rotation_type = placement['rotation_type']
-        
-        cage.add_item(item, position, rotation_type)
-        
-        print(f"籠車狀態已更新。當前重量: {cage.current_weight:.2f}kg, "
-            f"角點: {len(cage.corner_points)}個。")
+        def point_not_in_any_item(point: Tuple[float, float, float], packed_items: List[Item]) -> bool:
+            for it in packed_items:
+                if point_in_item(point, it):
+                    return False
+            return True
+
+        points: Set[Tuple[float, float, float]] = {(0.0, 0.0, 0.0)}
+        for it in cage.packed_items:
+            pos = it.position
+            dx, dy, dz = it.get_rotated_dimensions(it.rotation_type)
+
+            candidates = [
+                (pos[0] + dx, pos[1],       pos[2]),  # x+
+                (pos[0],      pos[1] + dy,  pos[2]),  # y+
+            ]
+            if not getattr(it, "is_fragile", False):
+                candidates.append((pos[0], pos[1], pos[2] + dz))  # z+
+
+            for p in candidates:
+                if point_not_in_any_item(p, cage.packed_items):
+                    points.add((float(p[0]), float(p[1]), float(p[2])))
+
+        # 邊界過濾
+        l, w, h = cage.dimensions if hasattr(cage, "dimensions") else CAGE_DIMENSIONS
+        TOL = 1e-6
+        valid = [p for p in points if p[0] < l - TOL and p[1] < w - TOL and p[2] < h - TOL]
+        return valid

@@ -63,18 +63,6 @@ class Item:
         # asdict 會自動將 dataclass 轉換為字典
         return asdict(self)
 
-    @staticmethod
-    def from_dict(d: dict[str, Any]) -> 'Item':
-        """從字典創建一個 Item 物件。"""
-        # 只選擇 Item 的 __init__ 方法需要的參數來創建
-        return Item(
-            id=d.get('id'),
-            base_dimensions=tuple(d.get('base_dimensions', [])),
-            weight=d.get('weight'),
-            allowed_rotations=d.get('allowed_rotations', list(range(6))),
-            is_fragile=d.get('is_fragile', False)
-        )
-
 @dataclass
 class SupportSurface:
     """可以放置物品的支撐平面
@@ -103,7 +91,8 @@ class CageTrolley:
     dimensions(長, 寬, 高),
     weight_limit,
     packed_items,
-    support_surfaces
+    support_surfaces,
+    corner_points
     """
     id: str
     # 籠車內部可用尺寸 (長, 寬, 高)
@@ -144,15 +133,3 @@ class CageTrolley:
     def to_dict(self) -> dict[str, Any]:
         """將 CageTrolley 物件轉換為字典。"""
         return asdict(self)
-    @staticmethod
-    def from_dict(d: dict[str, Any]) -> 'CageTrolley':
-        """從字典創建一個 CageTrolley 物件。"""
-        # 從 packed_items 的字典列表中恢復 Item 物件
-        packed_items_objs = [Item.from_dict(item_dict) for item_dict in d.get('packed_items', [])]
-        
-        return CageTrolley(
-            id=d.get('id'),
-            dimensions=tuple(d.get('dimensions', [])),
-            weight_limit=d.get('weight_limit'),
-            packed_items=packed_items_objs
-        )

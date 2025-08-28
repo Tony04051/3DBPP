@@ -1,117 +1,212 @@
 # main.py(heuristic cp)
 import argparse
+import pandas as pd
+import random
 import csv
 import time
+import copy
 # import numpy as np
-from typing import cast, Tuple
+from typing import cast
 from ..data_structures import Item, CageTrolley
 from ..CP.Heuristics.packer import Packer
 from config import *
 
-def run(args):
-    t0 = time.time()
-    # --- Phase 0: 系統初始化 ---
-    print("="*40)
-    print("系統初始化...")
+def load_items_from_csv(file_path: str):
+    """從指定的 CSV 檔案路徑載入貨物列表。"""
+    conveyor_items = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # 確保維度資料是乾淨的
+                dims_str = row['base_dimensions'].strip('() ')
+                raw_dims = tuple(map(float, dims_str.split(',')))
+                
+                # 確保旋轉資料是乾淨的
+                rotations_str = row['allowed_rotations'].strip('[]"\' ')
+                if rotations_str:
+                    allowed_rotations = [int(num) for num in rotations_str.split(',')]
+                else:
+                    allowed_rotations = []
+
+                item = Item(
+                    id=int(row['id']),
+                    base_dimensions=cast(tuple[float, float, float], raw_dims),
+                    weight=float(row['weight']),
+                    allowed_rotations=allowed_rotations,
+                    is_fragile=(row['is_fragile'].lower() == 'true')
+                )
+                conveyor_items.append(item)
+    except FileNotFoundError:
+        print(f"錯誤: 檔案不存在 {file_path}")
+        return []
+    except Exception as e:
+        print(f"讀取 CSV '{file_path}' 時發生錯誤: {e}")
+        return []
+    return conveyor_items
+
+def perform_single_simulation(initial_item_list: list[Item]):
+    """
+    執行一次完整的裝箱模擬。
+    接收一個貨物列表，回傳一個包含結果的字典。
+    """
+    
+    # --- 每次模擬都使用全新的籠車和 Packer ---
     cage = CageTrolley(
-        id="C001",
+        id="C001(cp-heuristics)",
         dimensions=CAGE_DIMENSIONS,
         weight_limit=CAGE_WEIGHT_LIMIT
     )
     packer = Packer()
-    print(f"籠車 {cage.id} 已準備好。")
-    print("="*40)
-
-    # --- 模擬輸送帶上的貨物 ---
-    # 實際應用中，這會從 conveyor_interface 獲取
-    # 示例中從 CSV 讀取
-    conveyor_items = []
-    try:
-        with open('./cases/conveyor_items_0.csv', 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                raw_dims = tuple(map(float, row['base_dimensions'].strip('()').split(',')))
-                item = Item(
-                    id=int(row['id']),
-                    base_dimensions=cast(Tuple[float, float, float], raw_dims),
-                    weight=float(row['weight']),
-                    allowed_rotations=list(map(int, row['allowed_rotations'].strip('[]').split(','))),
-                    is_fragile=(row['is_fragile'].lower() == 'true')
-                    )
-                conveyor_items.append(item)
-    except FileNotFoundError:
-        print("錯誤:請確認檔案是否存在。")
-        return # 找不到檔案就直接結束程式
-    except Exception as e:
-        print(f"讀取 CSV 時發生錯誤: {e}")
-        return
-    # 暫存區
+    
+    # --- 狀態管理 ---
+    # 使用傳入物品列表的深拷貝，以免影響原始列表
+    conveyor_items = copy.deepcopy(initial_item_list)
     temp = []
     
     # --- 主迴圈 ---
-    item_counter = 0
+    time_counter  = []
     while conveyor_items or temp:
-        item_counter += 1
-        print(f"\n--- 裝箱迴圈 #{item_counter} ---")
-        
-        # 步驟 1: 建立候選物品列表
         conveyor_lookahead = conveyor_items[:LOOKAHEAD_DEPTH]
-        # 合併兩個列表取前四個
         candidate_items_repo = temp + conveyor_lookahead
         candidate_items = candidate_items_repo[:4]
-        print(f"候選物品: {[item.id for item in candidate_items]}")
 
         if not candidate_items:
             break
-        
-        # 步驟 2: 尋找全局最佳放置方案
-        print("正在尋找最佳放置方案...")
+        t0 = time.time()
         best_placement = packer.pack(cage, candidate_items)
-        print(f"最佳放置方案: {best_placement}")
-        # 步驟 3: 決策與執行
+        t1 = time.time()
         if best_placement:
             selected_item = best_placement['item']
-            print(f"決策: 選擇物品 {selected_item.id} 進行放置。")
-            # 從暫存區移除已放置的物品
-            if selected_item in temp:
-                temp.remove(selected_item)
-            else:
-                # 如果不在暫存區，則從輸送帶中移除
-                conveyor_items.remove(selected_item)
             
+            # 從暫存區或輸送帶移除已放置的物品
+            item_found_and_removed = False
+            for i, item in enumerate(temp):
+                if item.id == selected_item.id:
+                    temp.pop(i)
+                    item_found_and_removed = True
+                    break
+            if not item_found_and_removed:
+                 for i, item in enumerate(conveyor_items):
+                    if item.id == selected_item.id:
+                        conveyor_items.pop(i)
+                        break
         else:
-            # 步驟 3 (續): 異常處理
-            print("\n!!! 警告: 找不到任何可行的放置方案。")
-            # 嘗試將輸送帶最前端的物品移入暫存區
+            # 異常處理
             if conveyor_items and len(temp) < TEMP_AREA_CAPACITY:
-                item_to_move = conveyor_items.pop(0) # 從輸送帶移除最前端的
+                item_to_move = conveyor_items.pop(0)
                 temp.append(item_to_move)
-                print(f"將物品 {item_to_move.id} 從輸送帶移入暫存區。")
-                continue # 進入下一次迴圈，用新的候選物品組合再試一次
+                continue
             else:
-                if not conveyor_items:
-                    print("輸送帶已空，且暫存區物品無法放置。")
-                elif len(temp) >= TEMP_AREA_CAPACITY:
-                    print("暫存區已滿，且無法放置任何物品。")
-                
-                print("模擬結束。")
                 break
-            
-    print("\n" + "="*40)
-    print("裝箱模擬結束。")
-    print(f"總共放置了 {len(cage.packed_items)} 個物品。")
-    print(f"最終籠車重量: {cage.current_weight:.2f}kg / {CAGE_WEIGHT_LIMIT}kg")
-    V=0
+        time_counter.append(t1 - t0)
+        
+    
+    
+    # --- 計算結果 ---
+    total_volume = 0
     for item in cage.packed_items:
-        V += item.calc_dimensions[0] * item.calc_dimensions[1] * item.calc_dimensions[2]
-    print(f"籠車空間利用率: {V/ (CAGE_DIMENSIONS[0]* CAGE_DIMENSIONS[1]* CAGE_DIMENSIONS[2])*100:.2f}%")
-    print("="*40)
-    # 可視化結果
-    from bpp_solver.visualizer import plot_cage_plotly 
-    plot_cage_plotly(cage, title="3D Bin Packing Result")
+        # 假設 Item 物件在放置後會有 calc_dimensions 屬性
+        if hasattr(item, 'calc_dimensions'):
+            dims = item.calc_dimensions
+            total_volume += dims[0] * dims[1] * dims[2]
+        else: # 備用計算
+            dims = item.get_rotated_dimensions(item.rotation_type)
+            total_volume += dims[0] * dims[1] * dims[2]
+
+    cage_volume = CAGE_DIMENSIONS[0] * CAGE_DIMENSIONS[1] * CAGE_DIMENSIONS[2]
+    utilization = (total_volume / cage_volume) * 100 if cage_volume > 0 else 0
+
+    return {
+        "packed_items_count": len(cage.packed_items),
+        "final_weight": cage.current_weight,
+        "utilization_percent": utilization,
+        "average_packing_time": sum(time_counter)/ len(time_counter) if time_counter else 0
+    }
+
+def run_experiment(num_datasets: int, num_shuffles: int):
+    """
+    執行完整的隨機實驗並報告結果。
+    """
+    print("="*60)
+    print(f"開始執行隨機順序實驗...")
+    print(f"資料集數量: {num_datasets}, 每個資料集隨機模擬次數: {num_shuffles}")
+    print("="*60)
+    
+    all_results = []
+
+    for i in range(num_datasets):
+        dataset_id = f"Dataset_{i+1}"
+        file_path = f'./cases/conveyor_items_{i}.csv'
+        
+        print(f"\n--- 正在處理資料集: {dataset_id} ({file_path}) ---")
+        
+        original_items = load_items_from_csv(file_path)
+        if not original_items:
+            print(f"無法載入資料集 {dataset_id}，跳過。")
+            continue
+            
+        dataset_results = []
+        for j in range(num_shuffles):
+            print(f"  -> 正在進行第 {j+1}/{num_shuffles} 次隨機模擬...")
+            
+            # 建立一個列表的副本並打亂順序
+            shuffled_items = original_items[:]
+            random.shuffle(shuffled_items)
+            
+            # 執行單次模擬
+            result = perform_single_simulation(shuffled_items)
+            result['dataset_id'] = dataset_id
+            result['run_id'] = j + 1
+            dataset_results.append(result)
+        
+        all_results.extend(dataset_results)
+
+    if not all_results:
+        print("沒有任何模擬成功執行，無法產生報告。")
+        return
+
+    # --- 步驟 4: 統計與報告 ---
+    print("\n\n" + "="*60)
+    print("實驗完成！結果統計報告：")
+    print("="*60)
+    
+    # 使用 pandas 進行數據分析
+    df = pd.DataFrame(all_results)
+    
+    # 設定顯示選項
+    pd.set_option('display.precision', 2)
+    
+    # 按資料集分組並計算統計數據
+    summary = df.groupby('dataset_id').agg(
+        avg_packed_items=('packed_items_count', 'mean'),
+        std_packed_items=('packed_items_count', 'std'),
+        avg_utilization=('utilization_percent', 'mean'),
+        std_utilization=('utilization_percent', 'std'),
+        min_utilization=('utilization_percent', 'min'),
+        max_utilization=('utilization_percent', 'max'),
+        avg_time=('average_packing_time', 'mean')
+    ).reset_index()
+
+    print(summary.to_string(index=False))
+    
+    print("\n" + "-"*60)
+    print("報告說明:")
+    print("  - avg_packed_items: 平均放置物品數量")
+    print("  - std_packed_items: 放置物品數量的標準差 (值越小代表演算法對順序變化的穩健度越高)")
+    print("  - avg_utilization: 平均空間利用率 (%)")
+    print("  - std_utilization: 空間利用率的標準差 (值越小代表穩健度越高)")
+    print("  - min/max_utilization: 20 次隨機實驗中的最差與最佳表現")
+    print("  - average_packing_time:    每次選擇最佳方案耗時 (秒)")
+    print("="*60)
+    
+    # (可選) 將詳細結果儲存到 CSV
+    df.to_csv("experiment_detailed_results.csv", index=False, encoding='utf-8-sig')
+    print("\n詳細結果已儲存至 experiment_detailed_results.csv")
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="3D Bin Packing Problem Solver (Heuristic CP)")
-    parser.add_argument('--case', type=str, default='conveyor_items_4.csv', help='輸送帶物品的 CSV 檔案路徑')
-    args = parser.parse_args()
-    run(args)
+    # 您可以在這裡設定要運行的資料集數量和每個資料集的隨機次數
+    NUM_DATASETS = 5
+    NUM_SHUFFLES_PER_DATASET = 20
+    run_experiment(NUM_DATASETS, NUM_SHUFFLES_PER_DATASET)

@@ -12,7 +12,7 @@ ITEM_DIMENSIONS_RANGE = {
 # --- 籠車參數 ---
 # (長, 寬, 高)，單位: cm
 CAGE_DIMENSIONS = (100, 100, 100) 
-CAGE_WEIGHT_LIMIT = 300 # 單位: kg
+CAGE_WEIGHT_LIMIT = 500 # 單位: kg
 
 # --- 演算法參數 ---
 # 機器視覺的尺寸量測誤差，會加到每個物品的長寬高上

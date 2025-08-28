@@ -14,6 +14,7 @@ class Packer:
         """
         遍歷所有 corner points，為所有候選物品尋找最佳放置方案。
         """
+        print(f"CP Heuristic Packer 初始化")
         best_placement = {
             'score': -math.inf, 
             'item': None, 
